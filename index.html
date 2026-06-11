@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BNI 長榮｜個人紅綠燈查詢</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, "Noto Sans TC", sans-serif; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid #d1fae5;
+      border-top-color: #065f46;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <div class="bg-gradient-to-b from-green-800 to-green-700 text-white text-center py-7 px-4 shadow">
+    <p class="text-xs tracking-widest text-green-300 uppercase mb-1">BNI 長榮傳承組</p>
+    <h1 class="text-2xl font-bold tracking-wide">個人紅綠燈查詢</h1>
+    <p id="header-period" class="text-green-200 text-sm mt-1 h-5"></p>
+  </div>
+
+  <!-- Main -->
+  <div class="max-w-md mx-auto px-4 mt-6 pb-16">
+
+    <!-- Search box -->
+    <div class="relative">
+      <input
+        id="search-input"
+        type="text"
+        placeholder="輸入姓名或會員編號（如：035）"
+        disabled
+        autocomplete="off"
+        class="w-full border-2 border-green-700 rounded-2xl px-5 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-green-400 bg-white shadow-sm disabled:opacity-50"
+      >
+      <!-- Dropdown -->
+      <div id="suggestions"
+        class="absolute z-20 w-full bg-white border border-gray-200 rounded-2xl shadow-xl mt-1 overflow-hidden hidden">
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="flex flex-col items-center mt-12 text-gray-400">
+      <div class="spinner"></div>
+      <p class="mt-3 text-sm">資料載入中，請稍候…</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="hidden text-center mt-12 text-red-400">
+      <p class="text-3xl mb-2">⚠️</p>
+      <p class="font-medium">資料載入失敗</p>
+      <p class="text-sm mt-1">請確認試算表已開放公開，或稍後再試</p>
+    </div>
+
+    <!-- No result -->
+    <div id="no-result" class="hidden text-center mt-12 text-gray-400">
+      <p class="text-3xl mb-2">🔍</p>
+      <p>查無此會員，請確認姓名或編號</p>
+    </div>
+
+    <!-- Result card -->
+    <div id="result" class="hidden mt-5 fade-in"></div>
+
+  </div>
+
+  <script>
+  // ── 設定 ──────────────────────────────────────────────────
+  const MEMBER_CSV = 'https://docs.google.com/spreadsheets/d/1ec7niNZ67e_beYs-TysDCGYuEpU7TPlV_BJgJtySTK0/export?format=csv&gid=602629302';
+  const BNI_CSV    = 'https://docs.google.com/spreadsheets/d/1FmbgTKX64uadHywzYtMQ8GUUb3eF-1_M2PKQvafCkX8/export?format=csv&gid=1798054740';
+
+  // ── 資料 ──────────────────────────────────────────────────
+  let members  = [];  // { id, name, norm }
+  let bniRows  = [];  // member data rows (col 0–36)
+  let bniMeta  = {};  // { month, periodLabel, actionLabel, weeks }
+
+  // ── 工具 ──────────────────────────────────────────────────
+  const norm = s => (s || '').replace(/[\s　]+/g, '').trim();
+
+  function parseCSV(text) {
+    const rows = [];
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      const row = []; let q = false, cur = '';
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { q = !q; }
+        else if (c === ',' && !q) { row.push(cur.trim()); cur = ''; }
+        else cur += c;
+      }
+      row.push(cur.trim());
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // ── 載入資料 ──────────────────────────────────────────────
+  async function loadData() {
+    try {
+      const [mt, bt] = await Promise.all([
+        fetch(MEMBER_CSV).then(r => { if (!r.ok) throw r; return r.text(); }),
+        fetch(BNI_CSV).then(r => { if (!r.ok) throw r; return r.text(); }),
+      ]);
+
+      // 名單：只取「會員」
+      const mRows = parseCSV(mt);
+      members = mRows.slice(1)
+        .filter(r => r[3] === '會員' && r[1]?.trim() && r[2]?.trim())
+        .map(r => ({ id: r[1].trim(), name: r[2].trim(), norm: norm(r[2]) }));
+
+      // 紅綠燈表
+      const allRows = parseCSV(bt);
+      // 標頭 row 0: C(2) 含年月
+      const titleCell = allRows[0]?.[2] || '';
+      const mMatch = titleCell.match(/(\d{4}\.\d+)/);
+      bniMeta.month = mMatch ? mMatch[1] : '';
+      // row 1: Q(16) = 燈號期間，AE area(30) = 行動方案 label
+      bniMeta.periodLabel  = (allRows[1]?.[16] || '').replace(/\n/g, ' ');
+      bniMeta.actionLabel  = (allRows[1]?.[30] || '第六個月行動方案').replace(/\n/g, '');
+      // row 2: AH(33) = 週數
+      bniMeta.weeks = parseInt(allRows[2]?.[33]) || 0;
+      // 資料列從第 7 行開始（index 6），排除頁尾說明列
+      bniRows = allRows.slice(6).filter(r => {
+        const n = norm(r[0]);
+        return n && !n.includes('紅字') && !n.includes('不缺席');
+      });
+
+      // 更新 header 期間
+      if (bniMeta.periodLabel) {
+        document.getElementById('header-period').textContent = bniMeta.periodLabel;
+      }
+
+      document.getElementById('loading').classList.add('hidden');
+      const inp = document.getElementById('search-input');
+      inp.disabled = false;
+      inp.focus();
+
+    } catch (e) {
+      console.error(e);
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('error').classList.remove('hidden');
+    }
+  }
+
+  // ── 燈號 ──────────────────────────────────────────────────
+  function getLight(score) {
+    if (score >= 46) return {
+      emoji: '🟢', label: '綠燈', sub: '持續保持',
+      bg: 'bg-green-50', border: 'border-green-400',
+      badge: 'bg-green-100 text-green-800',
+      score: 'text-green-700'
+    };
+    if (score >= 30) return {
+      emoji: '🔴', label: '紅燈', sub: '需加強行動',
+      bg: 'bg-red-50', border: 'border-red-400',
+      badge: 'bg-red-100 text-red-800',
+      score: 'text-red-700'
+    };
+    return {
+      emoji: '⚫', label: '黑燈', sub: '需立即行動',
+      bg: 'bg-gray-100', border: 'border-gray-500',
+      badge: 'bg-gray-200 text-gray-800',
+      score: 'text-gray-800'
+    };
+  }
+
+  // ── 行動項目 ──────────────────────────────────────────────
+  const ACTION_DEFS = [
+    { label: '出席',     col: 30, unit: '',   note: '每週不缺席' },
+    { label: '內部引薦', col: 31, unit: '件' },
+    { label: '外部引薦', col: 32, unit: '件' },
+    { label: '來賓',     col: 33, unit: '位' },
+    { label: '一對一',   col: 34, unit: '次' },
+    { label: '交易價值', col: 35, unit: '元', currency: true },
+    { label: '培訓',     col: 36, unit: '次' },
+  ];
+
+  function renderAction(def, row) {
+    const raw = row[def.col];
+    const v = (raw === '' || raw === undefined || raw === null) ? null : parseFloat(raw);
+
+    // 出席：特別處理，永遠顯示「每週不缺席」
+    if (def.col === 30) {
+      const absent = parseFloat(row[3]) || 0;
+      const late   = parseFloat(row[4]) || 0;
+      if (absent === 0 && late === 0) {
+        return `<tr><td class="px-3 py-2.5 text-gray-600 font-medium w-1/3">${def.label}</td>
+                    <td class="px-3 py-2.5 text-green-700">✅ 全勤（繼續保持）</td></tr>`;
+      }
+      return `<tr class="bg-amber-50"><td class="px-3 py-2.5 text-gray-600 font-medium w-1/3">${def.label}</td>
+                  <td class="px-3 py-2.5 text-amber-700 font-semibold">⚠️ 注意出席率</td></tr>`;
+    }
+
+    if (v === null || v <= 0) {
+      return `<tr><td class="px-3 py-2.5 text-gray-600 font-medium w-1/3">${def.label}</td>
+                  <td class="px-3 py-2.5 text-green-700">✅ 已達標</td></tr>`;
+    }
+
+    const display = def.currency
+      ? `NT$ ${Math.round(v).toLocaleString()}`
+      : `${v % 1 === 0 ? v : v.toFixed(1)} ${def.unit}`;
+
+    return `<tr class="bg-red-50"><td class="px-3 py-2.5 text-gray-700 font-medium w-1/3">${def.label}</td>
+                <td class="px-3 py-2.5 text-red-700 font-semibold">🔴 尚需 ${display}</td></tr>`;
+  }
+
+  // ── 顯示結果 ──────────────────────────────────────────────
+  function showResult(member) {
+    const resultEl   = document.getElementById('result');
+    const noResultEl = document.getElementById('no-result');
+
+    const row = bniRows.find(r => norm(r[0]) === member.norm);
+    if (!row) {
+      noResultEl.classList.remove('hidden');
+      resultEl.classList.add('hidden');
+      return;
+    }
+    noResultEl.classList.add('hidden');
+
+    const totalWeeks = parseInt(row[16]) || 0;
+    const score      = parseFloat(row[27]) || 0;
+    const monthLabel = bniMeta.actionLabel || '本月行動方案';
+    const weeks      = bniMeta.weeks;
+
+    // 新會員
+    if (totalWeeks < 12) {
+      resultEl.innerHTML = `
+        <div class="bg-blue-50 border-2 border-blue-300 rounded-2xl p-6 text-center fade-in">
+          <p class="text-4xl mb-3">🌱</p>
+          <p class="text-xl font-bold text-gray-800">${member.name}</p>
+          <p class="text-sm text-gray-400 mt-0.5">#${member.id}</p>
+          <p class="text-blue-700 mt-3 font-medium">新會員（入會未滿三個月）</p>
+          <p class="text-blue-500 text-sm mt-1">持續出席、積極一對一，<br>快速建立人脈！</p>
+        </div>`;
+      resultEl.classList.remove('hidden');
+      return;
+    }
+
+    const light = getLight(score);
+    const actionRows = ACTION_DEFS.map(d => renderAction(d, row)).join('');
+
+    resultEl.innerHTML = `
+      <div class="${light.bg} border-2 ${light.border} rounded-2xl overflow-hidden fade-in">
+
+        <!-- 燈號區 -->
+        <div class="text-center py-6 px-4">
+          <p class="text-sm text-gray-500">#${member.id}</p>
+          <p class="text-2xl font-bold text-gray-800 mt-0.5">${member.name}</p>
+          <div class="mt-4">
+            <span class="text-6xl leading-none">${light.emoji}</span>
+            <div class="mt-2 flex items-center justify-center gap-2">
+              <span class="text-2xl font-bold ${light.score}">${light.label}</span>
+              <span class="text-sm px-2 py-0.5 rounded-full ${light.badge}">${light.sub}</span>
+            </div>
+            <p class="text-gray-500 text-xs mt-2">${bniMeta.periodLabel}</p>
+            <p class="${light.score} font-semibold mt-1">評分：${score} 分</p>
+          </div>
+        </div>
+
+        <!-- 分隔線 -->
+        <div class="border-t border-gray-200 mx-4"></div>
+
+        <!-- 行動方案 -->
+        <div class="px-4 pt-4 pb-2">
+          <p class="text-sm font-bold text-gray-600 mb-3">
+            📋 ${monthLabel}（共 ${weeks} 週）
+          </p>
+          <div class="rounded-xl overflow-hidden border border-gray-200 bg-white">
+            <table class="w-full text-sm">
+              <tbody>${actionRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 提示 -->
+        <p class="text-center text-xs text-gray-400 py-4">
+          出席＋黃底紅字全達標 ＝ 🟢 綠燈
+        </p>
+      </div>
+      <p class="text-center text-xs text-gray-400 mt-4 pb-2">資料每月由幹部更新 · BNI 長榮傳承組</p>
+    `;
+    resultEl.classList.remove('hidden');
+  }
+
+  // ── 搜尋 / 自動完成 ──────────────────────────────────────
+  const searchInput   = document.getElementById('search-input');
+  const suggestionsEl = document.getElementById('suggestions');
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim();
+    document.getElementById('result').classList.add('hidden');
+    document.getElementById('no-result').classList.add('hidden');
+
+    if (!q) { suggestionsEl.classList.add('hidden'); return; }
+
+    const matches = members.filter(m =>
+      m.name.includes(q) || m.norm.includes(norm(q)) || m.id.startsWith(q)
+    ).slice(0, 8);
+
+    if (!matches.length) { suggestionsEl.classList.add('hidden'); return; }
+
+    suggestionsEl.innerHTML = matches.map(m => `
+      <div class="flex justify-between items-center px-4 py-3 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-0 active:bg-green-100"
+        data-id="${m.id}">
+        <span class="font-medium text-gray-800">${m.name}</span>
+        <span class="text-gray-400 text-sm">#${m.id}</span>
+      </div>`).join('');
+    suggestionsEl.classList.remove('hidden');
+  });
+
+  suggestionsEl.addEventListener('click', e => {
+    const item = e.target.closest('[data-id]');
+    if (!item) return;
+    const member = members.find(m => m.id === item.dataset.id);
+    if (!member) return;
+    searchInput.value = member.name;
+    suggestionsEl.classList.add('hidden');
+    showResult(member);
+  });
+
+  searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const first = suggestionsEl.querySelector('[data-id]');
+      if (first) first.click();
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!searchInput.contains(e.target) && !suggestionsEl.contains(e.target))
+      suggestionsEl.classList.add('hidden');
+  });
+
+  // ── 啟動 ──────────────────────────────────────────────────
+  loadData();
+  </script>
+</body>
+</html>
