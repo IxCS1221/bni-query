@@ -47,6 +47,57 @@
       </div>
     </div>
 
+    <!-- 燈號說明 -->
+    <div class="mt-4">
+      <button id="criteria-toggle"
+        class="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm text-gray-600 hover:bg-gray-50 active:bg-gray-100">
+        <span>ℹ️ 燈號評分說明</span>
+        <span id="criteria-arrow" class="transition-transform duration-200">▼</span>
+      </button>
+      <div id="criteria-panel" class="hidden mt-2 bg-white border border-gray-200 rounded-2xl overflow-hidden text-sm">
+        <!-- 燈號標準 -->
+        <div class="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+          <div class="p-3 text-center">
+            <p class="text-2xl">🟢</p>
+            <p class="font-bold text-green-700 mt-1">綠燈</p>
+            <p class="text-gray-500 text-xs mt-0.5">46 分以上</p>
+          </div>
+          <div class="p-3 text-center">
+            <p class="text-2xl">🔴</p>
+            <p class="font-bold text-red-700 mt-1">紅燈</p>
+            <p class="text-gray-500 text-xs mt-0.5">30–45 分</p>
+          </div>
+          <div class="p-3 text-center">
+            <p class="text-2xl">⚫</p>
+            <p class="font-bold text-gray-700 mt-1">黑燈</p>
+            <p class="text-gray-500 text-xs mt-0.5">29 分以下</p>
+          </div>
+        </div>
+        <!-- 評分項目 -->
+        <table class="w-full">
+          <thead>
+            <tr class="bg-gray-50 text-gray-500 text-xs">
+              <th class="px-3 py-2 text-left font-medium">項目</th>
+              <th class="px-3 py-2 text-left font-medium">達標標準</th>
+              <th class="px-3 py-2 text-right font-medium">滿分</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr><td class="px-3 py-2 text-gray-700">出席</td><td class="px-3 py-2 text-gray-500">全勤不缺席</td><td class="px-3 py-2 text-right font-medium text-gray-700">20</td></tr>
+            <tr><td class="px-3 py-2 text-gray-700">引薦</td><td class="px-3 py-2 text-gray-500">每週 &gt; 1.5 件</td><td class="px-3 py-2 text-right font-medium text-gray-700">20</td></tr>
+            <tr><td class="px-3 py-2 text-gray-700">來賓</td><td class="px-3 py-2 text-gray-500">四週邀請 1 位</td><td class="px-3 py-2 text-right font-medium text-gray-700">10</td></tr>
+            <tr><td class="px-3 py-2 text-gray-700">一對一</td><td class="px-3 py-2 text-gray-500">每週 &gt; 2 次</td><td class="px-3 py-2 text-right font-medium text-gray-700">15</td></tr>
+            <tr><td class="px-3 py-2 text-gray-700">交易價值</td><td class="px-3 py-2 text-gray-500">40 萬元以上</td><td class="px-3 py-2 text-right font-medium text-gray-700">5</td></tr>
+            <tr><td class="px-3 py-2 text-gray-700">培訓</td><td class="px-3 py-2 text-gray-500">完成 3 次以上</td><td class="px-3 py-2 text-right font-medium text-gray-700">15</td></tr>
+            <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold text-gray-700">總分</td><td class="px-3 py-2"></td><td class="px-3 py-2 text-right font-bold text-gray-800">85</td></tr>
+          </tbody>
+        </table>
+        <p class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">
+          ＊以近六個月數據計算　＊入會未滿三個月新會員不計
+        </p>
+      </div>
+    </div>
+
     <!-- Loading -->
     <div id="loading" class="flex flex-col items-center mt-12 text-gray-400">
       <div class="spinner"></div>
@@ -337,6 +388,15 @@
   document.addEventListener('click', e => {
     if (!searchInput.contains(e.target) && !suggestionsEl.contains(e.target))
       suggestionsEl.classList.add('hidden');
+  });
+
+  // ── 燈號說明展開/收合 ────────────────────────────────────
+  document.getElementById('criteria-toggle').addEventListener('click', () => {
+    const panel = document.getElementById('criteria-panel');
+    const arrow = document.getElementById('criteria-arrow');
+    const open  = !panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', open);
+    arrow.style.transform = open ? '' : 'rotate(180deg)';
   });
 
   // ── 啟動 ──────────────────────────────────────────────────
