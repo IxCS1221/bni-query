@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BNI 長榮｜全員總覽 / 多人比較</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body { font-family: -apple-system, "Noto Sans TC", sans-serif; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid #d1fae5;
+      border-top-color: #065f46;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .35rem; }
+    @media (min-width: 480px) { .metric-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 768px) { .metric-grid { grid-template-columns: repeat(6, 1fr); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <div class="bg-gradient-to-b from-green-800 to-green-700 text-white text-center py-7 px-4 shadow">
+    <p class="text-xs tracking-widest text-green-300 uppercase mb-1">BNI 長榮傳承組</p>
+    <h1 class="text-2xl font-bold tracking-wide">全員總覽 / 多人比較</h1>
+    <p id="header-period" class="text-green-200 text-sm mt-1 h-5"></p>
+    <a href="index.html" class="inline-block mt-2 text-xs text-green-200 underline underline-offset-2 hover:text-white">🔍 回單人查詢</a>
+  </div>
+
+  <!-- Main -->
+  <div class="max-w-4xl mx-auto px-4 mt-6 pb-32">
+
+    <!-- Loading -->
+    <div id="loading" class="flex flex-col items-center mt-12 text-gray-400">
+      <div class="spinner"></div>
+      <p class="mt-3 text-sm">資料載入中，請稍候…</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="hidden text-center mt-12 text-red-400">
+      <p class="text-3xl mb-2">⚠️</p>
+      <p class="font-medium">資料載入失敗</p>
+      <p class="text-sm mt-1">請確認試算表已開放公開，或稍後再試</p>
+    </div>
+
+    <!-- Content -->
+    <div id="content" class="hidden">
+
+      <!-- 燈號說明 -->
+      <div class="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden text-sm">
+        <div class="grid grid-cols-4 divide-x divide-gray-100">
+          <div class="p-2.5 text-center"><p class="text-xl">🟢</p><p class="font-bold text-green-700 text-xs mt-0.5">綠燈 70+</p></div>
+          <div class="p-2.5 text-center"><p class="text-xl">🟡</p><p class="font-bold text-yellow-600 text-xs mt-0.5">黃燈 50-65</p></div>
+          <div class="p-2.5 text-center"><p class="text-xl">🔴</p><p class="font-bold text-red-700 text-xs mt-0.5">紅燈 30-45</p></div>
+          <div class="p-2.5 text-center"><p class="text-xl">⚫</p><p class="font-bold text-gray-700 text-xs mt-0.5">黑燈 25-</p></div>
+        </div>
+      </div>
+
+      <!-- 下載整頁按鈕 -->
+      <div class="flex justify-end mb-3">
+        <button id="download-overview" class="text-xs bg-white border border-gray-300 rounded-full px-4 py-2 text-gray-600 hover:bg-gray-100 shadow-sm">
+          📷 下載總覽圖片
+        </button>
+      </div>
+
+      <!-- 總覽區塊（by 燈號分組）-->
+      <div id="overview-groups"></div>
+
+      <!-- 比較結果 -->
+      <div id="compare-section" class="hidden mt-8">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-gray-700">📋 比較結果</h2>
+          <button id="download-compare" class="text-xs bg-white border border-gray-300 rounded-full px-4 py-2 text-gray-600 hover:bg-gray-100 shadow-sm">
+            📷 下載比較圖片
+          </button>
+        </div>
+        <div id="compare-cards" class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));"></div>
+      </div>
+
+      <p class="text-center text-xs text-gray-400 mt-8 pb-2">資料每月由幹部更新 · BNI 長榮傳承組</p>
+    </div>
+
+  </div>
+
+  <!-- 固定底部比較列 -->
+  <div id="compare-bar" class="hidden fixed bottom-0 left-0 right-0 bg-green-800 text-white shadow-lg z-30">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <span class="text-sm">已選 <span id="selected-count" class="font-bold">0</span> 人</span>
+      <div class="flex gap-2">
+        <button id="clear-selection" class="text-xs px-3 py-2 rounded-full bg-green-900 hover:bg-green-950">清除</button>
+        <button id="do-compare" class="text-xs px-4 py-2 rounded-full bg-white text-green-800 font-bold hover:bg-green-100">比較</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ── 設定 ──────────────────────────────────────────────────
+  const MEMBER_CSV = 'https://docs.google.com/spreadsheets/d/1ec7niNZ67e_beYs-TysDCGYuEpU7TPlV_BJgJtySTK0/export?format=csv&gid=602629302';
+  const BNI_CSV    = 'https://docs.google.com/spreadsheets/d/1FmbgTKX64uadHywzYtMQ8GUUb3eF-1_M2PKQvafCkX8/export?format=csv&gid=1798054740';
+
+  let members = [];   // { id, name, norm }
+  let bniMeta  = {};
+  let people   = [];  // 整理過的全員資料
+
+  const norm = s => (s || '').replace(/[\s　]+/g, '').trim();
+  const selected = new Set();
+
+  // 逐字元掃描、正確處理跨行的引號欄位（試算表標頭如「總計\n週數」匯出成 CSV 會是
+  // 跨兩行的引號欄位，先用 split('\n') 切行會把這種欄位切爛，所以整段文字一次掃）
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], cur = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          cur += c;
+        }
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(cur.trim()); cur = '';
+      } else if (c === '\r') {
+        // skip
+      } else if (c === '\n') {
+        row.push(cur.trim()); rows.push(row); row = []; cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    if (cur !== '' || row.length) { row.push(cur.trim()); rows.push(row); }
+    return rows.filter(r => r.some(cell => cell !== ''));
+  }
+
+  // ── 燈號（四級標準：綠70+／黃50-65／紅30-45／黑25-）──────────
+  function getLight(score) {
+    if (score >= 70) return { key: 'green',  emoji: '🟢', label: '綠燈', bg: 'bg-green-50',  border: 'border-green-400',  text: 'text-green-700' };
+    if (score >= 50) return { key: 'yellow', emoji: '🟡', label: '黃燈', bg: 'bg-yellow-50', border: 'border-yellow-400', text: 'text-yellow-700' };
+    if (score >= 30) return { key: 'red',    emoji: '🔴', label: '紅燈', bg: 'bg-red-50',    border: 'border-red-400',    text: 'text-red-700' };
+    return              { key: 'black',  emoji: '⚫', label: '黑燈', bg: 'bg-gray-100',  border: 'border-gray-500',   text: 'text-gray-800' };
+  }
+
+  const GROUP_ORDER = [
+    { key: 'green',  title: '🟢 綠燈', sort: 'desc' },
+    { key: 'yellow', title: '🟡 黃燈', sort: 'desc' },
+    { key: 'red',    title: '🔴 紅燈', sort: 'asc'  },
+    { key: 'black',  title: '⚫ 黑燈', sort: 'asc'  },
+  ];
+
+  // ── 六項行動定義（欄位對應同單人查詢頁）───────────────────
+  const ACTION_DEFS = [
+    { key: 'attend',  label: '出席',   col: 30 },
+    { key: 'refer',   label: '引薦',   col: 31, unit: '件' },
+    { key: 'guest',   label: '來賓',   col: 33, unit: '位' },
+    { key: 'oneone',  label: '一對一', col: 34, unit: '次' },
+    { key: 'value',   label: '交易價值', col: 35, unit: '元', currency: true },
+    { key: 'edu',     label: '培訓',   col: 36, unit: '次' },
+  ];
+
+  function computeGaps(row) {
+    const absent = parseFloat(row[3]) || 0;
+    const late   = parseFloat(row[4]) || 0;
+    const gaps = {};
+    gaps.attend = (absent === 0 && late === 0)
+      ? { ok: true, text: '✅ 全勤' }
+      : { ok: false, text: `⚠️ 缺席${absent}次${late ? '‧遲到' + late + '次' : ''}` };
+
+    for (const def of ACTION_DEFS) {
+      if (def.key === 'attend') continue;
+      const raw = row[def.col];
+      const v = (raw === '' || raw === undefined || raw === null) ? null : parseFloat(raw);
+      if (v === null || v >= 0) {
+        gaps[def.key] = { ok: true, text: `✅ ${def.label}達標` };
+      } else {
+        const absVal = Math.abs(v);
+        const display = def.currency
+          ? `NT$${Math.round(absVal).toLocaleString()}`
+          : `${absVal % 1 === 0 ? absVal : absVal.toFixed(1)}${def.unit}`;
+        gaps[def.key] = { ok: false, text: `🔴 缺${display}` };
+      }
+    }
+    return gaps;
+  }
+
+  // ── 載入資料 ──────────────────────────────────────────────
+  async function loadData() {
+    try {
+      const [mt, bt] = await Promise.all([
+        fetch(MEMBER_CSV).then(r => { if (!r.ok) throw r; return r.text(); }),
+        fetch(BNI_CSV).then(r => { if (!r.ok) throw r; return r.text(); }),
+      ]);
+
+      const mRows = parseCSV(mt);
+      members = mRows.slice(1)
+        .filter(r => r[3] === '會員' && r[1]?.trim() && r[2]?.trim())
+        .map(r => ({ id: r[1].trim(), name: r[2].trim(), norm: norm(r[2]) }));
+
+      const allRows = parseCSV(bt);
+      const titleCell = allRows[0]?.[2] || '';
+      const mMatch = titleCell.match(/(\d{4}\.\d+)/);
+      bniMeta.month = mMatch ? mMatch[1] : '';
+      bniMeta.periodLabel = (allRows[1]?.[16] || '').replace(/\n/g, ' ');
+      bniMeta.actionLabel = (allRows[1]?.[30] || '第六個月行動方案').replace(/\n/g, '');
+      bniMeta.weeks = parseInt(allRows[2]?.[33]) || 0;
+
+      const bniRows = allRows.slice(6).filter(r => {
+        const n = norm(r[0]);
+        return n && !n.includes('紅字') && !n.includes('不缺席');
+      });
+
+      people = bniRows.map(row => {
+        const n = norm(row[0]);
+        const m = members.find(mm => mm.norm === n);
+        const totalWeeks = parseInt(row[16]) || 0;
+        const score = parseFloat(row[27]) || 0;
+        const isNew = totalWeeks < 12;
+        return {
+          name: row[0],
+          id: m ? m.id : '',
+          totalWeeks,
+          score,
+          isNew,
+          light: isNew ? null : getLight(score),
+          gaps: computeGaps(row),
+        };
+      });
+
+      if (bniMeta.periodLabel) {
+        document.getElementById('header-period').textContent = bniMeta.periodLabel;
+      }
+
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+      renderGroups();
+
+    } catch (e) {
+      console.error(e);
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('error').classList.remove('hidden');
+    }
+  }
+
+  // ── 單張會員卡（總覽用，含勾選框）──────────────────────────
+  function memberCardHTML(p) {
+    const checked = selected.has(p.name) ? 'checked' : '';
+    const metrics = ACTION_DEFS.map(def => {
+      const g = p.gaps[def.key];
+      const cls = g.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
+      return `<div class="rounded-lg px-1.5 py-1 text-center text-[11px] leading-tight ${cls}">${g.text}</div>`;
+    }).join('');
+
+    return `
+      <div class="bg-white border border-gray-200 rounded-2xl p-3 mb-2 fade-in">
+        <div class="flex items-center gap-3">
+          <input type="checkbox" class="member-check w-5 h-5 accent-green-700 flex-shrink-0" data-name="${p.name}" ${checked}>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-gray-800 truncate">${p.name} <span class="text-gray-400 text-xs font-normal">#${p.id}</span></p>
+          </div>
+          <span class="text-sm font-bold text-gray-700 flex-shrink-0">${p.score} 分</span>
+        </div>
+        <div class="metric-grid mt-2">${metrics}</div>
+      </div>`;
+  }
+
+  function newMemberCardHTML(p) {
+    return `
+      <div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 flex items-center gap-3">
+        <span class="text-xl">🌱</span>
+        <div class="flex-1">
+          <p class="font-semibold text-gray-800">${p.name} <span class="text-gray-400 text-xs font-normal">#${p.id}</span></p>
+          <p class="text-xs text-blue-600">新會員（入會未滿三個月，暫不列入燈號）</p>
+        </div>
+      </div>`;
+  }
+
+  // ── 渲染總覽區塊 ──────────────────────────────────────────
+  function renderGroups() {
+    const container = document.getElementById('overview-groups');
+    const newMembers = people.filter(p => p.isNew);
+    let html = '';
+
+    for (const g of GROUP_ORDER) {
+      let list = people.filter(p => !p.isNew && p.light.key === g.key);
+      list.sort((a, b) => g.sort === 'asc' ? a.score - b.score : b.score - a.score);
+      if (!list.length) continue;
+      html += `
+        <div class="mb-6">
+          <h2 class="font-bold text-gray-600 mb-2 text-sm">${g.title}（${list.length} 人）</h2>
+          ${list.map(memberCardHTML).join('')}
+        </div>`;
+    }
+
+    if (newMembers.length) {
+      html += `
+        <div class="mb-6">
+          <h2 class="font-bold text-gray-600 mb-2 text-sm">🌱 新會員（${newMembers.length} 人）</h2>
+          ${newMembers.map(newMemberCardHTML).join('')}
+        </div>`;
+    }
+
+    container.innerHTML = html;
+
+    document.querySelectorAll('.member-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(cb.dataset.name);
+        else selected.delete(cb.dataset.name);
+        updateCompareBar();
+      });
+    });
+  }
+
+  // ── 底部比較列 ────────────────────────────────────────────
+  function updateCompareBar() {
+    const bar = document.getElementById('compare-bar');
+    document.getElementById('selected-count').textContent = selected.size;
+    bar.classList.toggle('hidden', selected.size === 0);
+  }
+
+  document.getElementById('clear-selection').addEventListener('click', () => {
+    selected.clear();
+    document.querySelectorAll('.member-check').forEach(cb => cb.checked = false);
+    updateCompareBar();
+    document.getElementById('compare-section').classList.add('hidden');
+  });
+
+  // ── 比較結果卡（沿用單人查詢頁的行動方案格式）──────────────
+  function compareCardHTML(p) {
+    if (p.isNew) {
+      return `
+        <div class="bg-blue-50 border-2 border-blue-300 rounded-2xl p-5 text-center">
+          <p class="text-3xl mb-2">🌱</p>
+          <p class="font-bold text-gray-800">${p.name} <span class="text-gray-400 text-xs font-normal">#${p.id}</span></p>
+          <p class="text-blue-700 mt-2 text-sm font-medium">新會員（入會未滿三個月）</p>
+        </div>`;
+    }
+    const light = p.light;
+    const rows = ACTION_DEFS.map(def => {
+      const g = p.gaps[def.key];
+      const cls = g.ok ? 'text-green-700' : 'text-red-700 font-semibold bg-red-50';
+      return `<tr class="${g.ok ? '' : 'bg-red-50'}"><td class="px-3 py-2 text-gray-600 font-medium w-1/3">${def.label}</td><td class="px-3 py-2 ${cls}">${g.text}</td></tr>`;
+    }).join('');
+
+    return `
+      <div class="${light.bg} border-2 ${light.border} rounded-2xl overflow-hidden">
+        <div class="text-center py-4 px-3">
+          <p class="text-xs text-gray-500">#${p.id}</p>
+          <p class="text-lg font-bold text-gray-800">${p.name}</p>
+          <p class="text-3xl mt-1">${light.emoji}</p>
+          <p class="${light.text} font-bold mt-1">${light.label}・${p.score} 分</p>
+        </div>
+        <div class="border-t border-gray-200 mx-3"></div>
+        <div class="px-3 pt-3 pb-3">
+          <p class="text-xs font-bold text-gray-500 mb-2">📋 ${bniMeta.actionLabel}（共 ${bniMeta.weeks} 週）</p>
+          <div class="rounded-xl overflow-hidden border border-gray-200 bg-white">
+            <table class="w-full text-sm"><tbody>${rows}</tbody></table>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('do-compare').addEventListener('click', () => {
+    const chosen = people.filter(p => selected.has(p.name));
+    const section = document.getElementById('compare-section');
+    document.getElementById('compare-cards').innerHTML = chosen.map(compareCardHTML).join('');
+    section.classList.remove('hidden');
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // ── 下載 JPG ──────────────────────────────────────────────
+  async function downloadAsImage(elementId, filenamePrefix) {
+    const el = document.getElementById(elementId);
+    const canvas = await html2canvas(el, { backgroundColor: '#f9fafb', scale: 2, useCORS: true });
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filenamePrefix}_${bniMeta.month || ''}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 'image/jpeg', 0.92);
+  }
+
+  document.getElementById('download-overview').addEventListener('click', () => {
+    downloadAsImage('overview-groups', 'BNI總覽');
+  });
+
+  document.getElementById('download-compare').addEventListener('click', () => {
+    const chosen = people.filter(p => selected.has(p.name));
+    const names = chosen.map(p => p.name).join('、');
+    const prefix = chosen.length > 3
+      ? `BNI比較_${chosen[0].name}等${chosen.length}人`
+      : `BNI比較_${names}`;
+    downloadAsImage('compare-cards', prefix);
+  });
+
+  // ── 啟動 ──────────────────────────────────────────────────
+  loadData();
+  </script>
+</body>
+</html>
