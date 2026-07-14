@@ -101,11 +101,34 @@
   let bniMeta  = {};
   let people   = [];  // 整理過的全員資料
   let activeTab = 'raw';
+  let nameSort  = 'id';   // 'id' 依編號 / 'stroke' 依筆畫
+  let scoreSort = null;   // null / 'asc' / 'desc'，只在六個月燈號頁使用
 
   const norm = s => (s || '').replace(/[\s　]+/g, '').trim();
   // 有些人紅綠燈表姓名後面會多接英文暱稱（如「林敬達 Forest」），但會員名單姓名欄只有純中文，
   // 比對時要把這種後綴去掉再比，不然兩邊姓名對不起來、抓不到會員編號
   const stripNickname = s => (s || '').replace(/\s*[A-Za-z][A-Za-z\s]*$/, '').trim();
+  // 有些人紅綠燈表姓名後面會多接中文括號別名（如「汪 熹（李偉豪）」），要一併去掉再比
+  const stripParenAlias = s => (s || '').replace(/[（(].*?[）)]\s*$/, '').trim();
+  // 少數人紅綠燈表跟會員名單用的名字完全不同（如「蘇靜美」在會員名單登記為「蘇士雯」），
+  // 遇到才需要的特例對照表
+  const NAME_ALIAS = { '蘇靜美': '蘇士雯' };
+
+  function findMember(rowName) {
+    const n = norm(rowName);
+    const stripped = norm(stripNickname(rowName));
+    const base = norm(stripParenAlias(stripNickname(rowName)));
+    const alias = NAME_ALIAS[base];
+    return members.find(mm => mm.norm === n)
+      || members.find(mm => mm.norm === stripped)
+      || members.find(mm => mm.norm === base)
+      || (alias && members.find(mm => mm.norm === alias));
+  }
+
+  const strokeCollator = (() => {
+    try { return new Intl.Collator('zh-Hant-u-co-stroke'); } catch (e) { return null; }
+  })();
+
   const selected = new Set();
 
   // 逐字元掃描、正確處理跨行的引號欄位（試算表標頭如「總計\n週數」匯出成 CSV 會是
@@ -228,9 +251,7 @@
       });
 
       people = bniRows.map(row => {
-        const n = norm(row[0]);
-        const m = members.find(mm => mm.norm === n)
-          || members.find(mm => mm.norm === norm(stripNickname(row[0])));
+        const m = findMember(row[0]);
         const totalWeeks = parseInt(row[16]) || 0;
         const score = parseFloat(row[27]) || 0;
         return {
@@ -265,6 +286,24 @@
     return raw;
   }
 
+  function getSortedPeople() {
+    const list = [...people];
+    if (activeTab === 'light' && scoreSort) {
+      list.sort((a, b) => scoreSort === 'asc' ? a.score - b.score : b.score - a.score);
+      return list;
+    }
+    if (nameSort === 'stroke' && strokeCollator) {
+      list.sort((a, b) => strokeCollator.compare(a.name, b.name));
+    } else {
+      list.sort((a, b) => {
+        const ai = a.id === '' ? Infinity : parseInt(a.id);
+        const bi = b.id === '' ? Infinity : parseInt(b.id);
+        return ai - bi;
+      });
+    }
+    return list;
+  }
+
   function renderTable() {
     const wrap = document.getElementById('table-wrap');
     const subtitle = document.getElementById('tab-subtitle');
@@ -276,7 +315,9 @@
       bodyFn = p => RAW_DEFS.map(d => `<td>${fmtCell(p.row[d.col], d)}</td>`).join('');
     } else if (activeTab === 'light') {
       subtitle.textContent = `${bniMeta.periodLabel}　${bniMeta.lightPeriod}`;
-      headCols = [...LIGHT_DEFS.map(d => d.label), '總分/燈號'];
+      headCols = [...LIGHT_DEFS.map(d => d.label), `總分/燈號
+        <button id="score-sort-asc" class="ml-1 px-1 rounded ${scoreSort === 'asc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↑</button>
+        <button id="score-sort-desc" class="px-1 rounded ${scoreSort === 'desc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↓</button>`];
       bodyFn = p => LIGHT_DEFS.map(d => `<td>${fmtCell(p.row[d.col], d)}</td>`).join('')
         + `<td class="${p.light.cell}">${p.score} ${p.light.emoji}</td>`;
     } else {
@@ -288,10 +329,18 @@
       }).join('');
     }
 
-    const headHTML = `<th class="name-cell">比較</th><th class="name-cell">姓名</th>` +
+    const nameHeaderCell = `<th class="name-cell">
+        姓名／編號
+        <select id="name-sort-select" class="block mt-1 text-[10px] border border-gray-300 rounded px-1 py-0.5 bg-white">
+          <option value="id" ${nameSort === 'id' ? 'selected' : ''}>依編號</option>
+          <option value="stroke" ${nameSort === 'stroke' ? 'selected' : ''}>依筆畫</option>
+        </select>
+      </th>`;
+
+    const headHTML = `<th class="name-cell">比較</th>${nameHeaderCell}` +
       headCols.map(h => `<th>${h}</th>`).join('');
 
-    const bodyHTML = people.map(p => `
+    const bodyHTML = getSortedPeople().map(p => `
       <tr>
         <td class="name-cell text-center"><input type="checkbox" class="member-check w-4 h-4 accent-green-700" data-name="${p.name}" ${selected.has(p.name) ? 'checked' : ''}></td>
         <td class="name-cell font-medium text-gray-800">${p.name}<span class="text-gray-400 text-[10px] block">#${p.id}</span></td>
@@ -307,6 +356,22 @@
         updateCompareBar();
       });
     });
+
+    document.getElementById('name-sort-select').addEventListener('change', e => {
+      nameSort = e.target.value;
+      renderTable();
+    });
+
+    if (activeTab === 'light') {
+      document.getElementById('score-sort-asc').addEventListener('click', () => {
+        scoreSort = scoreSort === 'asc' ? null : 'asc';
+        renderTable();
+      });
+      document.getElementById('score-sort-desc').addEventListener('click', () => {
+        scoreSort = scoreSort === 'desc' ? null : 'desc';
+        renderTable();
+      });
+    }
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === activeTab);

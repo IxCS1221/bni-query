@@ -159,6 +159,21 @@
   // 有些人紅綠燈表姓名後面會多接英文暱稱（如「林敬達 Forest」），但會員名單姓名欄只有純中文，
   // 比對時要把這種後綴去掉再比，不然兩邊姓名對不起來
   const stripNickname = s => (s || '').replace(/\s*[A-Za-z][A-Za-z\s]*$/, '').trim();
+  // 有些人紅綠燈表姓名後面會多接中文括號別名（如「汪 熹（李偉豪）」），要一併去掉再比
+  const stripParenAlias = s => (s || '').replace(/[（(].*?[）)]\s*$/, '').trim();
+  // 少數人紅綠燈表跟會員名單用的名字完全不同（如「蘇靜美」在會員名單登記為「蘇士雯」），
+  // 遇到才需要的特例對照表
+  const NAME_ALIAS = { '蘇靜美': '蘇士雯' };
+
+  function namesMatch(rowName, memberNorm) {
+    const n = norm(rowName);
+    if (n === memberNorm) return true;
+    const stripped = norm(stripNickname(rowName));
+    if (stripped === memberNorm) return true;
+    const base = norm(stripParenAlias(stripNickname(rowName)));
+    if (base === memberNorm) return true;
+    return NAME_ALIAS[base] === memberNorm;
+  }
 
   // 逐字元掃描、正確處理跨行的引號欄位（試算表標頭如「總計\n週數」匯出成 CSV 會是
   // 跨兩行的引號欄位，先用 split('\n') 切行會把這種欄位切爛，所以整段文字一次掃）
@@ -342,8 +357,7 @@
     const resultEl   = document.getElementById('result');
     const noResultEl = document.getElementById('no-result');
 
-    const row = bniRows.find(r => norm(r[0]) === member.norm)
-      || bniRows.find(r => norm(stripNickname(r[0])) === member.norm);
+    const row = bniRows.find(r => namesMatch(r[0], member.norm));
     if (!row) {
       noResultEl.classList.remove('hidden');
       resultEl.classList.add('hidden');
