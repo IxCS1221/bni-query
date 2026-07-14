@@ -345,7 +345,7 @@
 
     const absVal = Math.abs(v);
     const display = def.currency
-      ? `NT$ ${Math.round(absVal).toLocaleString()}`
+      ? Math.round(absVal).toLocaleString()
       : `${absVal % 1 === 0 ? absVal : absVal.toFixed(1)} ${def.unit}`;
 
     return `<tr class="bg-red-50"><td class="px-3 py-2.5 text-gray-700 font-medium w-1/3">${def.label}</td>
@@ -374,7 +374,7 @@
     // 第一層：五個月 PALMS 原始數據
     const rawCells = RAW_DEFS.map(d => {
       const raw = row[d.col];
-      const v = (raw === '' || raw === undefined) ? '—' : (d.currency ? `NT$${Math.round(parseFloat(raw) || 0).toLocaleString()}` : raw);
+      const v = (raw === '' || raw === undefined) ? '—' : (d.currency ? Math.round(parseFloat(raw) || 0).toLocaleString() : raw);
       return `<div class="bg-gray-50 rounded-lg px-2 py-2 text-center">
                 <p class="text-[11px] text-gray-400">${d.label}</p>
                 <p class="text-sm font-bold text-gray-700 mt-0.5">${v}</p>

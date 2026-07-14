@@ -82,7 +82,7 @@
   </div>
 
   <!-- 固定底部比較列 -->
-  <div id="compare-bar" class="hidden fixed bottom-0 left-0 right-0 bg-green-800 text-white shadow-lg z-30">
+  <div id="compare-bar" class="hidden fixed bottom-0 left-0 right-0 bg-green-800 text-white shadow-lg z-50" style="padding-bottom: env(safe-area-inset-bottom);">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
       <span class="text-sm">已選 <span id="selected-count" class="font-bold">0</span> 人</span>
       <div class="flex gap-2">
@@ -213,7 +213,7 @@
       } else {
         const absVal = Math.abs(v);
         const display = def.currency
-          ? `NT$${Math.round(absVal).toLocaleString()}`
+          ? Math.round(absVal).toLocaleString()
           : `${absVal % 1 === 0 ? absVal : absVal.toFixed(1)}${def.unit}`;
         gaps[def.key] = { ok: false, text: `🔴 缺${display}` };
       }
@@ -282,7 +282,7 @@
   // ── 表格渲染 ──────────────────────────────────────────────
   function fmtCell(raw, def) {
     if (raw === '' || raw === undefined || raw === null) return '—';
-    if (def.currency) return `NT$${Math.round(parseFloat(raw) || 0).toLocaleString()}`;
+    if (def.currency) return Math.round(parseFloat(raw) || 0).toLocaleString();
     return raw;
   }
 
@@ -342,7 +342,7 @@
 
     const bodyHTML = getSortedPeople().map(p => `
       <tr>
-        <td class="name-cell text-center"><input type="checkbox" class="member-check w-4 h-4 accent-green-700" data-name="${p.name}" ${selected.has(p.name) ? 'checked' : ''}></td>
+        <td class="name-cell text-center p-0"><label class="flex items-center justify-center w-full h-full min-h-[44px] cursor-pointer"><input type="checkbox" class="member-check w-5 h-5 accent-green-700" data-name="${p.name}" ${selected.has(p.name) ? 'checked' : ''}></label></td>
         <td class="name-cell font-medium text-gray-800">${p.name}<span class="text-gray-400 text-[10px] block">#${p.id}</span></td>
         ${bodyFn(p)}
       </tr>`).join('');
