@@ -37,7 +37,7 @@
       <input
         id="search-input"
         type="text"
-        placeholder="輸入姓名或會員編號（如：035）"
+        placeholder="輸入姓名或會員編號"
         disabled
         autocomplete="off"
         class="w-full border-2 border-green-700 rounded-2xl px-5 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-green-400 bg-white shadow-sm disabled:opacity-50"
@@ -115,7 +115,7 @@
         </table>
         <p class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">
           ＊來賓、交易價值要拿滿分不容易，行動方案先用較低門檻。其他四項達標就等於綠燈 70 分門檻<br>
-          ＊以近六個月數據計算　＊新會員一樣正常計算燈號
+          ＊以近六個月數據計算
         </p>
       </div>
     </div>
@@ -156,6 +156,9 @@
 
   // ── 工具 ──────────────────────────────────────────────────
   const norm = s => (s || '').replace(/[\s　]+/g, '').trim();
+  // 有些人紅綠燈表姓名後面會多接英文暱稱（如「林敬達 Forest」），但會員名單姓名欄只有純中文，
+  // 比對時要把這種後綴去掉再比，不然兩邊姓名對不起來
+  const stripNickname = s => (s || '').replace(/\s*[A-Za-z][A-Za-z\s]*$/, '').trim();
 
   // 逐字元掃描、正確處理跨行的引號欄位（試算表標頭如「總計\n週數」匯出成 CSV 會是
   // 跨兩行的引號欄位，先用 split('\n') 切行會把這種欄位切爛，所以整段文字一次掃）
@@ -339,7 +342,8 @@
     const resultEl   = document.getElementById('result');
     const noResultEl = document.getElementById('no-result');
 
-    const row = bniRows.find(r => norm(r[0]) === member.norm);
+    const row = bniRows.find(r => norm(r[0]) === member.norm)
+      || bniRows.find(r => norm(stripNickname(r[0])) === member.norm);
     if (!row) {
       noResultEl.classList.remove('hidden');
       resultEl.classList.add('hidden');
@@ -347,9 +351,7 @@
     }
     noResultEl.classList.add('hidden');
 
-    const totalWeeks = parseInt(row[16]) || 0;
     const score      = parseFloat(row[27]) || 0;
-    const isNew      = totalWeeks < 12;
     const monthLabel = bniMeta.actionLabel || '本月行動方案';
     const weeks      = bniMeta.weeks;
     const light      = getLight(score);
@@ -377,11 +379,6 @@
 
     resultEl.innerHTML = `
       <div class="space-y-4 fade-in">
-
-        ${isNew ? `
-        <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 text-center text-sm text-blue-700">
-          🌱 新會員（入會未滿三個月，燈號正常計算，僅供參考）
-        </div>` : ''}
 
         <!-- 會員姓名 -->
         <div class="text-center">
