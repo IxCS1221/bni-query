@@ -213,11 +213,15 @@
         fetch(BNI_CSV).then(r => { if (!r.ok) throw r; return r.text(); }),
       ]);
 
-      // 名單：只取「會員」
+      // 名單：只取「會員」；姓名統一格式化成「姓 名」（會員名單原始資料沒有空格）
       const mRows = parseCSV(mt);
       members = mRows.slice(1)
         .filter(r => r[3] === '會員' && r[1]?.trim() && r[2]?.trim())
-        .map(r => ({ id: r[1].trim(), name: r[2].trim(), norm: norm(r[2]) }));
+        .map(r => {
+          const raw = r[2].trim();
+          const name = raw.length >= 2 ? raw[0] + ' ' + raw.slice(1) : raw;
+          return { id: r[1].trim(), name, norm: norm(raw) };
+        });
 
       // 紅綠燈表
       const allRows = parseCSV(bt);
@@ -330,7 +334,7 @@
       const late   = parseFloat(row[4]) || 0;
       if (absent === 0 && late === 0) {
         return `<tr><td class="px-3 py-2.5 text-gray-600 font-medium w-1/3">${def.label}</td>
-                    <td class="px-3 py-2.5 text-green-700">✅ 出席達標（繼續保持）</td></tr>`;
+                    <td class="px-3 py-2.5 text-green-700">✅ 達標（繼續保持）</td></tr>`;
       }
       return `<tr class="bg-amber-50"><td class="px-3 py-2.5 text-gray-600 font-medium w-1/3">${def.label}</td>
                   <td class="px-3 py-2.5 text-amber-700 font-semibold">⚠️ 注意出席率</td></tr>`;

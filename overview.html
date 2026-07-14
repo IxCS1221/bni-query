@@ -125,6 +125,15 @@
       || (alias && members.find(mm => mm.norm === alias));
   }
 
+  // 顯示姓名一律用會員名單的乾淨姓名（不留英文暱稱／括號別名），
+  // 並在姓後面加一個空格，跟試算表原本「姓 名」的排版一致
+  function displayName(m, rowName) {
+    if (m && m.name) {
+      return m.name.length >= 2 ? m.name[0] + ' ' + m.name.slice(1) : m.name;
+    }
+    return stripParenAlias(stripNickname(rowName));
+  }
+
   const strokeCollator = (() => {
     try { return new Intl.Collator('zh-Hant-u-co-stroke'); } catch (e) { return null; }
   })();
@@ -178,10 +187,9 @@
     { label: '交易價值', col: 13, currency: true }, { label: '培訓', col: 14 },
   ];
 
-  // ── 六個月燈號欄位（Q~AB）────────────────────────────────
+  // ── 六個月燈號欄位（Q~AB，分數優先，出席/來賓分母/引薦總和/引薦週均不列）──
   const LIGHT_DEFS = [
-    { label: '出席', col: 2 }, { label: '總計週數', col: 16 }, { label: '來賓分母', col: 17 },
-    { label: '引薦總和', col: 18 }, { label: '引薦週均', col: 19 },
+    { label: '總計週數', col: 16 },
     { label: '缺席分數', col: 21 }, { label: '引薦分數', col: 22 }, { label: '來賓分數', col: 23 },
     { label: '121分數', col: 24 }, { label: '交易價值分數', col: 25 }, { label: '教育分數', col: 26 },
   ];
@@ -201,7 +209,7 @@
     const late   = parseFloat(row[4]) || 0;
     const gaps = {};
     gaps.attend = (absent === 0 && late === 0)
-      ? { ok: true, text: '✅ 出席達標' }
+      ? { ok: true, text: '✅ 達標' }
       : { ok: false, text: `⚠️ 缺席${absent}次${late ? '‧遲到' + late + '次' : ''}` };
 
     for (const def of ACTION_DEFS) {
@@ -209,7 +217,7 @@
       const raw = row[def.col];
       const v = (raw === '' || raw === undefined || raw === null) ? null : parseFloat(raw);
       if (v === null || v >= 0) {
-        gaps[def.key] = { ok: true, text: `✅ ${def.label}達標` };
+        gaps[def.key] = { ok: true, text: '✅ 達標' };
       } else {
         const absVal = Math.abs(v);
         const display = def.currency
@@ -256,7 +264,7 @@
         const score = parseFloat(row[27]) || 0;
         return {
           row,
-          name: row[0],
+          name: displayName(m, row[0]),
           id: m ? m.id : '',
           totalWeeks,
           score,
@@ -315,9 +323,9 @@
       bodyFn = p => RAW_DEFS.map(d => `<td>${fmtCell(p.row[d.col], d)}</td>`).join('');
     } else if (activeTab === 'light') {
       subtitle.textContent = `${bniMeta.periodLabel}　${bniMeta.lightPeriod}`;
-      headCols = [...LIGHT_DEFS.map(d => d.label), `總分/燈號
-        <button id="score-sort-asc" class="ml-1 px-1 rounded ${scoreSort === 'asc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↑</button>
-        <button id="score-sort-desc" class="px-1 rounded ${scoreSort === 'desc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↓</button>`];
+      headCols = [...LIGHT_DEFS.map(d => d.label), `
+        <button id="score-sort-asc" class="px-1.5 rounded ${scoreSort === 'asc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↑</button>
+        <button id="score-sort-desc" class="px-1.5 rounded ${scoreSort === 'desc' ? 'bg-green-700 text-white' : 'bg-gray-100'}">↓</button>`];
       bodyFn = p => LIGHT_DEFS.map(d => `<td>${fmtCell(p.row[d.col], d)}</td>`).join('')
         + `<td class="${p.light.cell}">${p.score} ${p.light.emoji}</td>`;
     } else {
@@ -330,8 +338,7 @@
     }
 
     const nameHeaderCell = `<th class="name-cell">
-        姓名／編號
-        <select id="name-sort-select" class="block mt-1 text-[10px] border border-gray-300 rounded px-1 py-0.5 bg-white">
+        <select id="name-sort-select" class="text-[11px] border border-gray-300 rounded px-1 py-0.5 bg-white">
           <option value="id" ${nameSort === 'id' ? 'selected' : ''}>依編號</option>
           <option value="stroke" ${nameSort === 'stroke' ? 'selected' : ''}>依筆畫</option>
         </select>
